@@ -468,6 +468,9 @@ static const char *hw_samsung_bluetooth_type()
     if (strncmp(buf, "semcosh", 7) == 0)
         return "semcosh";
 
+    if (strncmp(buf, "semco", 5) == 0)
+        return "semco";
+
     if (strncmp(buf, "wisol", 5) == 0)
         return "wisol";
 
@@ -839,6 +842,15 @@ void hw_config_cback(void *p_mem)
                     strncpy(hw_cfg_cb.local_chip_name, p_name, \
                             LOCAL_NAME_BUFFER_LEN-1);
                 }
+#ifdef USE_BLUETOOTH_BCM4343
+                else if ((p_name = strstr(p_tmp, "4343")) != NULL)
+                {
+                    snprintf(hw_cfg_cb.local_chip_name,
+                             LOCAL_NAME_BUFFER_LEN-1, "BCM%s", p_name);
+                    strncpy(p_name, hw_cfg_cb.local_chip_name,
+                            LOCAL_NAME_BUFFER_LEN-1);
+                }
+#endif
                 else
                 {
                     strncpy(hw_cfg_cb.local_chip_name, "UNKNOWN", \
@@ -1045,8 +1057,15 @@ void hw_config_cback(void *p_mem)
     } // if (p_buf != NULL)
 
     /* Free the RX event buffer */
+
+// On manta this causes a crash due to an overrun elsewhere.
+// Sad as it is, if we just do not do the free here we'll just leak less than 4K each time BT is turned on.
+// And since when it is turned off, the process dies, this realy only costs us 4K total.
+// I'm willing to part with 4K to avoid debugging bluedroid
+#ifndef MANTA_BUG
     if (bt_vendor_cbacks)
         bt_vendor_cbacks->dealloc(p_evt_buf);
+#endif
 
     if (is_proceeding == FALSE)
     {
@@ -1450,7 +1469,27 @@ void hw_sco_config(void)
      *  and FM on the same PCM pins, we defer Bluetooth audio (SCO/eSCO)
      *  configuration till SCO/eSCO is being established;
      *  i.e. in hw_set_audio_state() call.
+     *  When configured as I2S only, Bluetooth audio configuration is executed
+     *  immediately with SCO_CODEC_CVSD by default.
      */
+
+    if (SCO_INTERFACE_I2S == sco_bus_interface) {
+        HC_BT_HDR *p_buf = NULL;
+        uint16_t cmd_u16 = HCI_CMD_PREAMBLE_SIZE + SCO_I2SPCM_PARAM_SIZE;
+
+        if (bt_vendor_cbacks)
+            p_buf = (HC_BT_HDR *)bt_vendor_cbacks->alloc(BT_HC_HDR_SIZE + cmd_u16);
+
+        if (p_buf) {
+            p_buf->event = MSG_STACK_TO_HC_HCI_CMD;
+            p_buf->offset = 0;
+            p_buf->layer_specific = 0;
+            p_buf->len = cmd_u16;
+            hw_sco_i2spcm_config(p_buf, SCO_CODEC_CVSD);
+        } else {
+            ALOGE("Cannot allocate memory for p_buf in hw_sco_config sco config");
+        }
+    }
 
     if (bt_vendor_cbacks)
     {

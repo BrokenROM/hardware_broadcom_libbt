@@ -6,6 +6,10 @@ include $(CLEAR_VARS)
 
 BDROID_DIR := $(TOP_DIR)system/bt
 
+ifeq ($(strip $(USE_BLUETOOTH_BCM4343)),true)
+LOCAL_CFLAGS += -DUSE_BLUETOOTH_BCM4343
+endif
+
 LOCAL_SRC_FILES := \
         src/bt_vendor_brcm.c \
         src/hardware.c \
@@ -29,6 +33,10 @@ LOCAL_PROPRIETARY_MODULE := true
 
 ifeq ($(BOARD_HAVE_SAMSUNG_BLUETOOTH),true)
     LOCAL_CFLAGS += -DSAMSUNG_BLUETOOTH
+endif
+
+ifeq ($(BCM_BLUETOOTH_MANTA_BUG), true)
+    LOCAL_CFLAGS += -DMANTA_BUG
 endif
 
 include $(LOCAL_PATH)/vnd_buildcfg.mk
